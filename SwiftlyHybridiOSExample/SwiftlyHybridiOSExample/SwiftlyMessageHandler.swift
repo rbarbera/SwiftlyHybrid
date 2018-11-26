@@ -44,31 +44,39 @@ class SwiftlyMessageHandler:NSObject, WKScriptMessageHandler {
         appWebView!.load(request)
         theController.view.addSubview(appWebView!)
     }
+    
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        let sentData = message.body as! NSDictionary
+        guard
+            let sentData = message.body as? NSDictionary,
+            let command = sentData["cmd"] as? String,
+            command == "increment",
+            var count = sentData["count"] as? Int,
+            let callbackString = sentData["callbackFunc"] as? String
+            else { return }
         
-        let command = sentData["cmd"] as! String
         var response = Dictionary<String,AnyObject>()
-        if command == "increment"{
-            guard var count = sentData["count"] as? Int else{
-                return
-            }
-            count += 1
-            response["count"] = count as AnyObject
-        }
-        let callbackString = sentData["callbackFunc"] as? String
+        count += 5
+        response["count"] = count as AnyObject        
         sendResponse(aResponse: response, callback: callbackString)
     }
+    
+    
     func sendResponse(aResponse:Dictionary<String,AnyObject>, callback:String?){
-        guard let callbackString = callback else{
-            return
-        }
-        guard let generatedJSONData = try? JSONSerialization.data(withJSONObject: aResponse, options: JSONSerialization.WritingOptions(rawValue: 0)) else{
-            print("failed to generate JSON for \(aResponse)")
+        guard let callbackString = callback else {
             return
         }
         
-        appWebView!.evaluateJavaScript("(\(callbackString)('\(NSString(data:generatedJSONData, encoding:String.Encoding.utf8.rawValue)!)'))") {(JSReturnValue, error) in
+        guard
+            let data = try? JSONSerialization.data(withJSONObject: aResponse, options: []),
+            let parameters = String(data: data, encoding: .utf8)
+            else {
+                print("failed to generate JSON for \(aResponse)")
+                return
+        }
+        
+        let javaScript = "(\(callbackString)('\(parameters)'))"
+        
+        appWebView!.evaluateJavaScript(javaScript) {(JSReturnValue, error) in
             if let errorDescription = (error as NSError?)?.description{
                 print("returned value: \(errorDescription)")
             }
